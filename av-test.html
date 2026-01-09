@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Audio Visualiser Test</title>
+  <link rel="stylesheet" href="audiovisualiser.css">
+</head>
+<body>
+  <div class="container">
+    <h1>Audio Visualiser Test</h1>
+    <div class="canvas-wrap">
+      <canvas id="circleCanvas" aria-label="Sine-modulated circle"></canvas>
+    </div>
+    
+    <hr style="margin: 1.5rem 0; border: none; border-top: 1px solid #ddd;">
+    <h2 style="font-size: 1rem; margin-bottom: 1rem; color: #333;">Audio Source</h2>
+    
+    <div class="file-input-wrapper">
+      <div class="controls">
+        <button id="recordBtn" style="padding: 0.5rem 1rem; cursor: pointer;">Start Recording</button>
+      </div>
+      <div style="margin-top: 0.5rem;">
+        <span style="font-size: 0.9rem; color: #555;">Or load an audio file:</span>
+      </div>
+      <input type="file" id="fileInput" accept="audio/*">
+      <audio id="audioPlayer" controls preload="auto">
+        Your browser does not support the audio element.
+      </audio>
+    </div>
+  </div>
+
+  <script src="audiovisualiser.js"></script>
+  <script>
+    // Initialize the audio visualiser
+    const visualizer = new AudioVisualiser('circleCanvas', {
+      width: 500,
+      height: 500,
+      baseRadius: 150,
+      sineAmplitude: 25,
+      sineFrequency: 10,   // First circle: 10 petals
+      sineFrequency2: 6    // Second circle: 6 petals
+    });
+    
+    // Connect to HTML controls (only audio source controls, no visual controls)
+    visualizer.connectControls({
+      fileInput: 'fileInput',
+      audioPlayer: 'audioPlayer',
+      recordBtn: 'recordBtn'
+    });
+  </script>
+</body>
+</html>
