@@ -1,0 +1,27 @@
+{
+  "name": "audiovisualiser",
+  "version": "1.0.0",
+  "description": "A reusable audio visualization component that creates animated circles modulated by audio input",
+  "main": "audiovisualiser.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "audio",
+    "visualization",
+    "canvas",
+    "web-audio-api",
+    "visualizer",
+    "audio-analysis"
+  ],
+  "author": "Ian McGuire",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nobbymcg/audiovisualiser.git"
+  },
+  "bugs": {
+    "url": "https://github.com/nobbymcg/audiovisualiser/issues"
+  },
+  "homepage": "https://github.com/nobbymcg/audiovisualiser#readme"
+}
