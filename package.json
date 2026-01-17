@@ -1,5 +1,5 @@
 {
-  "name": "audiovisualiser",
+  "name": "@nobbymcg/audiovisualiser",
   "version": "1.0.0",
   "description": "A reusable audio visualization component that creates animated circles modulated by audio input",
   "main": "audiovisualiser.js",
