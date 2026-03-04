@@ -17,7 +17,6 @@ A reusable JavaScript audio visualization component that creates beautiful anima
 
 See the included example files:
 - `circle-player.html` - Audio file player with controls
-- `circle-freq.html` - Frequency-based visualization
 - `circle.html` - Basic circle visualization
 
 ## Installation

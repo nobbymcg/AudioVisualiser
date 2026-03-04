@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Sine-Modulated Circle</title>
+  <link rel="stylesheet" href="audiovisualiser.css">
+</head>
+<body>
+  <div class="container">
+    <h1>Audio Visualiser</h1>
+    <div class="canvas-wrap">
+      <canvas id="circleCanvas" aria-label="Sine-modulated circle"></canvas>
+    </div>
+    
+    <hr style="margin: 1.5rem 0; border: none; border-top: 1px solid #ddd;">
+    <h2 style="font-size: 1rem; margin-bottom: 1rem; color: #333;">Audio Source</h2>
+    
+    <div class="file-input-wrapper">
+      <div class="controls">
+        <button id="recordBtn" style="padding: 0.5rem 1rem; cursor: pointer;">Start Recording</button>
+      </div>
+      <div style="margin-top: 0.5rem;">
+        <span style="font-size: 0.9rem; color: #555;">Or load an audio file:</span>
+      </div>
+      <input type="file" id="fileInput" accept="audio/*">
+      <audio id="audioPlayer" controls preload="auto">
+        Your browser does not support the audio element.
+      </audio>
+    </div>
+    
+    <hr style="margin: 1.5rem 0; border: none; border-top: 1px solid #ddd;">
+    <h2 style="font-size: 1rem; margin-bottom: 1rem; color: #333;">Controls</h2>
+    
+    <div class="controls">
+      <label for="rotationSpeed">First circle rotation (seconds per revolution):</label>
+      <input type="number" id="rotationSpeed" min="-300" max="300" step="1" value="8">
+    </div>
+    <div class="controls">
+      <label for="color1">First circle color:</label>
+      <input type="color" id="color1" value="#2563eb">
+    </div>
+    <div class="controls">
+      <label for="opacity1">First circle fill opacity:</label>
+      <input type="range" id="opacity1" min="0" max="1" step="0.01" value="0.1">
+      <span class="fade-value" id="opacity1Value">0.1</span>
+    </div>
+    <div class="controls">
+      <label for="rotationSpeed2">Second circle rotation (seconds per revolution):</label>
+      <input type="number" id="rotationSpeed2" min="-300" max="300" step="1" value="12">
+    </div>
+    <div class="controls">
+      <label for="color2">Second circle color:</label>
+      <input type="color" id="color2" value="#a02ced">
+    </div>
+    <div class="controls">
+      <label for="opacity2">Second circle fill opacity:</label>
+      <input type="range" id="opacity2" min="0" max="1" step="0.01" value="0.05">
+      <span class="fade-value" id="opacity2Value">0.05</span>
+    </div>
+    <div class="controls">
+      <label for="fade">Fade (0=long trails, 1=no trails):</label>
+      <input type="range" id="fade" min="0" max="1" step="0.01" value="0.3">
+      <span class="fade-value" id="fadeValue">0.2</span>
+    </div>
+    <div class="controls">
+      <label for="bgColor">Background color:</label>
+      <input type="color" id="bgColor" value="#f7f7f9">
+    </div>
+    <p class="caption">
+      Audio Visualiser using two cosine modulated circles with amplitude determined by RMS. Negative values rotate counterclockwise.
+    </p>
+  </div>
+
+  <script src="audiovisualiser.js"></script>
+  <script>
+    // Initialize the audio visualiser
+    const visualizer = new AudioVisualiser('circleCanvas', {
+      width: 500,
+      height: 500,
+      baseRadius: 150,
+      sineAmplitude: 25,
+      sineFrequency: 10,   // First circle: 10 petals
+      sineFrequency2: 6    // Second circle: 6 petals
+    });
+    
+    // Connect to HTML controls
+    visualizer.connectControls({
+      rotationSpeed: 'rotationSpeed',
+      rotationSpeed2: 'rotationSpeed2',
+      fade: 'fade',
+      fadeValue: 'fadeValue',
+      color1: 'color1',
+      color2: 'color2',
+      bgColor: 'bgColor',
+      opacity1: 'opacity1',
+      opacity1Value: 'opacity1Value',
+      opacity2: 'opacity2',
+      opacity2Value: 'opacity2Value',
+      fileInput: 'fileInput',
+      audioPlayer: 'audioPlayer',
+      recordBtn: 'recordBtn'
+    });
+  </script>
+</body>
+</html>

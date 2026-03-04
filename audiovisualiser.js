@@ -3,6 +3,14 @@
  * Creates animated circles modulated by audio input (file or microphone)
  */
 class AudioVisualiser {
+  // Named constants
+  static FAST_FFT_SIZE = 2048;
+  static SLOW_FFT_SIZE = 8192;
+  static NUM_POINTS = 360;
+  static NORMALIZE_OFFSET = 128;
+  static TWO_PI = 2 * Math.PI;
+  static ANIMATION_STARTUP_DELAY_MS = 63;
+
   constructor(canvasId, options = {}) {
     // Canvas setup
     this.canvas = document.getElementById(canvasId);
@@ -25,6 +33,15 @@ class AudioVisualiser {
     this.sineFrequency = options.sineFrequency || 10;  // First circle: 10 petals
     this.sineFrequency2 = options.sineFrequency2 || 6;  // Second circle: 6 petals
     
+    // Pre-compute sine/cosine lookup tables for the base angles
+    this.cosTable = new Float32Array(AudioVisualiser.NUM_POINTS + 1);
+    this.sinTable = new Float32Array(AudioVisualiser.NUM_POINTS + 1);
+    for (let i = 0; i <= AudioVisualiser.NUM_POINTS; i++) {
+      const angle = (i / AudioVisualiser.NUM_POINTS) * AudioVisualiser.TWO_PI;
+      this.cosTable[i] = Math.cos(angle);
+      this.sinTable[i] = Math.sin(angle);
+    }
+    
     // Rotation tracking
     this.rotationStartTime = null;
     
@@ -34,29 +51,38 @@ class AudioVisualiser {
     
     // Fast analyser (~1/32 second window)
     this.analyser = this.audioContext.createAnalyser();
-    this.analyser.fftSize = 2048;
+    this.analyser.fftSize = AudioVisualiser.FAST_FFT_SIZE;
     this.bufferLength = this.analyser.frequencyBinCount;
     this.dataArray = new Uint8Array(this.bufferLength);
     
     // Slow analyser (~1/8 second window)
     this.analyser2 = this.audioContext.createAnalyser();
-    this.analyser2.fftSize = 8192;
+    this.analyser2.fftSize = AudioVisualiser.SLOW_FFT_SIZE;
     this.bufferLength2 = this.analyser2.frequencyBinCount;
     this.dataArray2 = new Uint8Array(this.bufferLength2);
     
-    this.analyser.connect(this.audioContext.destination);
+    // Connection state tracking (avoids try/catch for flow control)
+    this.analyserConnectedToDestination = false;
+    this.sourceConnectedToAnalysers = false;
+    this.connectAnalyserToDestination();
     
     // Current RMS values
     this.currentRMS = 0;
     this.currentRMS2 = 0;
     
     // Animation state
-    this.animationInterval = null;
+    this.animationFrameId = null;
     this.isRecording = false;
+    
+    // Object URL tracking (prevents memory leaks)
+    this.currentObjectURL = null;
     
     // Microphone state
     this.micStream = null;
     this.micSource = null;
+    
+    // Bound event listener references (for cleanup in destroy)
+    this._boundListeners = [];
     
     // Default settings (can be overridden by connectControls)
     this.settings = {
@@ -70,8 +96,79 @@ class AudioVisualiser {
       opacity2: 0.05      // second circle opacity
     };
     
+    // Cached RGB values (recomputed only when colors change)
+    this._cachedRGB = {
+      color1: this.hexToRgb(this.settings.color1),
+      color2: this.hexToRgb(this.settings.color2),
+      bgColor: this.hexToRgb(this.settings.bgColor)
+    };
+    
     // Draw initial state
     this.drawCircle(0, 0);
+  }
+  
+  // --- Connection state helpers ---
+  
+  /**
+   * Connect analyser to audio destination (for playback output)
+   */
+  connectAnalyserToDestination() {
+    if (!this.analyserConnectedToDestination) {
+      this.analyser.connect(this.audioContext.destination);
+      this.analyserConnectedToDestination = true;
+    }
+  }
+  
+  /**
+   * Disconnect analyser from audio destination
+   */
+  disconnectAnalyserFromDestination() {
+    if (this.analyserConnectedToDestination) {
+      this.analyser.disconnect();
+      this.analyserConnectedToDestination = false;
+    }
+  }
+  
+  /**
+   * Connect audio source to both analysers
+   */
+  connectSourceToAnalysers() {
+    if (this.source && !this.sourceConnectedToAnalysers) {
+      this.source.connect(this.analyser);
+      this.source.connect(this.analyser2);
+      this.sourceConnectedToAnalysers = true;
+    }
+  }
+  
+  /**
+   * Disconnect audio source from analysers
+   */
+  disconnectSource() {
+    if (this.source && this.sourceConnectedToAnalysers) {
+      this.source.disconnect();
+      this.sourceConnectedToAnalysers = false;
+    }
+  }
+  
+  // --- Helper to register event listeners with cleanup tracking ---
+  
+  /**
+   * Add an event listener and track it for removal on destroy
+   */
+  _addTrackedListener(element, event, handler) {
+    if (!element) return;
+    element.addEventListener(event, handler);
+    this._boundListeners.push({ element, event, handler });
+  }
+  
+  /**
+   * Remove all tracked event listeners
+   */
+  _removeAllListeners() {
+    for (const { element, event, handler } of this._boundListeners) {
+      element.removeEventListener(event, handler);
+    }
+    this._boundListeners = [];
   }
   
   /**
@@ -125,7 +222,7 @@ class AudioVisualiser {
     
     // Update fade value display
     if (c.fade && c.fadeValue) {
-      c.fade.addEventListener('input', () => {
+      this._addTrackedListener(c.fade, 'input', () => {
         c.fadeValue.textContent = c.fade.value;
         this.settings.fade = parseFloat(c.fade.value);
       });
@@ -133,41 +230,58 @@ class AudioVisualiser {
     
     // Update opacity displays and settings
     if (c.opacity1 && c.opacity1Value) {
-      c.opacity1.addEventListener('input', () => {
+      this._addTrackedListener(c.opacity1, 'input', () => {
         c.opacity1Value.textContent = c.opacity1.value;
         this.settings.opacity1 = parseFloat(c.opacity1.value);
       });
     }
     
     if (c.opacity2 && c.opacity2Value) {
-      c.opacity2.addEventListener('input', () => {
+      this._addTrackedListener(c.opacity2, 'input', () => {
         c.opacity2Value.textContent = c.opacity2.value;
         this.settings.opacity2 = parseFloat(c.opacity2.value);
       });
     }
     
+    // Cache RGB values when color inputs change
+    if (c.color1) {
+      this._addTrackedListener(c.color1, 'input', () => {
+        this._cachedRGB.color1 = this.hexToRgb(c.color1.value);
+      });
+    }
+    if (c.color2) {
+      this._addTrackedListener(c.color2, 'input', () => {
+        this._cachedRGB.color2 = this.hexToRgb(c.color2.value);
+      });
+    }
+    if (c.bgColor) {
+      this._addTrackedListener(c.bgColor, 'input', () => {
+        this._cachedRGB.bgColor = this.hexToRgb(c.bgColor.value);
+      });
+    }
+    
     // File input handler
     if (c.fileInput && c.audioPlayer) {
-      c.fileInput.addEventListener('change', (e) => this.handleFileSelect(e));
+      this._addTrackedListener(c.fileInput, 'change', (e) => this.handleFileSelect(e));
     }
     
     // Audio player handlers
     if (c.audioPlayer) {
-      c.audioPlayer.addEventListener('play', () => this.handleAudioPlay());
-      c.audioPlayer.addEventListener('pause', () => this.stopAnimation());
-      c.audioPlayer.addEventListener('ended', () => this.stopAnimation());
-      c.audioPlayer.addEventListener('error', (e) => {
+      this._addTrackedListener(c.audioPlayer, 'play', () => this.handleAudioPlay());
+      this._addTrackedListener(c.audioPlayer, 'pause', () => this.stopAnimation());
+      this._addTrackedListener(c.audioPlayer, 'ended', () => this.stopAnimation());
+      this._addTrackedListener(c.audioPlayer, 'error', (e) => {
         console.error('Error loading audio file:', e);
         alert('Error loading audio file.');
       });
-      c.audioPlayer.addEventListener('loadeddata', () => {
+      this._addTrackedListener(c.audioPlayer, 'loadeddata', () => {
         console.log('Audio loaded successfully');
       });
     }
     
     // Record button handler
     if (c.recordBtn) {
-      c.recordBtn.addEventListener('click', () => this.toggleRecording());
+      this._addTrackedListener(c.recordBtn, 'click', () => this.toggleRecording());
     }
   }
   
@@ -181,24 +295,22 @@ class AudioVisualiser {
     console.log('File selected:', file.name);
     
     // Stop existing animation
-    if (this.animationInterval) {
-      clearInterval(this.animationInterval);
-      this.animationInterval = null;
-    }
+    this.stopAnimation();
     
     // Stop microphone if recording
     this.stopMicrophone();
     
     // Reconnect analyser to destination for audio playback
-    try {
-      this.analyser.connect(this.audioContext.destination);
-    } catch (e) {
-      // Already connected, ignore
+    this.connectAnalyserToDestination();
+    
+    // Revoke previous object URL to prevent memory leak
+    if (this.currentObjectURL) {
+      URL.revokeObjectURL(this.currentObjectURL);
     }
     
     // Create object URL for the audio player
-    const objectURL = URL.createObjectURL(file);
-    this.controls.audioPlayer.src = objectURL;
+    this.currentObjectURL = URL.createObjectURL(file);
+    this.controls.audioPlayer.src = this.currentObjectURL;
     this.controls.audioPlayer.classList.add('visible');
     
     // Create media element source if not already created
@@ -206,6 +318,7 @@ class AudioVisualiser {
       this.source = this.audioContext.createMediaElementSource(this.controls.audioPlayer);
       this.source.connect(this.analyser);
       this.source.connect(this.analyser2);
+      this.sourceConnectedToAnalysers = true;
     }
     
     console.log('Audio ready to play');
@@ -221,21 +334,10 @@ class AudioVisualiser {
     this.stopMicrophone();
     
     // Reconnect analyser to destination for audio playback
-    try {
-      this.analyser.connect(this.audioContext.destination);
-    } catch (e) {
-      // Already connected, ignore
-    }
+    this.connectAnalyserToDestination();
     
     // Reconnect source if it was disconnected
-    if (this.source) {
-      try {
-        this.source.connect(this.analyser);
-        this.source.connect(this.analyser2);
-      } catch (e) {
-        // Already connected, ignore
-      }
-    }
+    this.connectSourceToAnalysers();
     
     // Resume audio context if needed
     if (this.audioContext.state === 'suspended') {
@@ -245,7 +347,7 @@ class AudioVisualiser {
     // Start animation after brief delay
     setTimeout(() => {
       this.startAnimation();
-    }, 62.5);
+    }, AudioVisualiser.ANIMATION_STARTUP_DELAY_MS);
   }
   
   /**
@@ -276,18 +378,13 @@ class AudioVisualiser {
         }
         
         // Stop existing animation
-        if (this.animationInterval) {
-          clearInterval(this.animationInterval);
-          this.animationInterval = null;
-        }
+        this.stopAnimation();
         
         // Disconnect audio player source
-        if (this.source) {
-          this.source.disconnect();
-        }
+        this.disconnectSource();
         
-        // Disconnect analyser from destination (no playback)
-        this.analyser.disconnect();
+        // Disconnect analyser from destination (no playback for mic)
+        this.disconnectAnalyserFromDestination();
         
         // Create microphone source
         this.micSource = this.audioContext.createMediaStreamSource(this.micStream);
@@ -362,7 +459,7 @@ class AudioVisualiser {
     this.analyser.getByteTimeDomainData(this.dataArray);
     let sum = 0;
     for (let i = 0; i < this.bufferLength; i++) {
-      const normalized = (this.dataArray[i] - 128) / 128;
+      const normalized = (this.dataArray[i] - AudioVisualiser.NORMALIZE_OFFSET) / AudioVisualiser.NORMALIZE_OFFSET;
       sum += normalized * normalized;
     }
     return Math.sqrt(sum / this.bufferLength);
@@ -375,45 +472,44 @@ class AudioVisualiser {
     this.analyser2.getByteTimeDomainData(this.dataArray2);
     let sum = 0;
     for (let i = 0; i < this.bufferLength2; i++) {
-      const normalized = (this.dataArray2[i] - 128) / 128;
+      const normalized = (this.dataArray2[i] - AudioVisualiser.NORMALIZE_OFFSET) / AudioVisualiser.NORMALIZE_OFFSET;
       sum += normalized * normalized;
     }
     return Math.sqrt(sum / this.bufferLength2);
   }
   
   /**
-   * Draw a single modulated circle
+   * Draw a single modulated circle using pre-computed trig tables and Path2D
    */
-  drawModulatedCircle(rmsModulation, sineFreq, rotationOffset, color, opacity, lineWidth) {
-    this.ctx.beginPath();
-    const numPoints = 360;
+  drawModulatedCircle(rmsModulation, sineFreq, rotationOffset, color, cachedRGB, opacity, lineWidth) {
+    const ctx = this.ctx;
+    const path = new Path2D();
+    const modulatedAmplitude = this.sineAmplitude * rmsModulation * 2;
+    const numPoints = AudioVisualiser.NUM_POINTS;
     
     for (let i = 0; i <= numPoints; i++) {
-      const angle = (i / numPoints) * 2 * Math.PI;
-      
-      const modulatedAmplitude = this.sineAmplitude * rmsModulation * 2;
-      const radiusModulation = modulatedAmplitude * Math.cos(sineFreq * angle + rotationOffset);
+      const baseAngle = (i / numPoints) * AudioVisualiser.TWO_PI;
+      const radiusModulation = modulatedAmplitude * Math.cos(sineFreq * baseAngle + rotationOffset);
       const radius = this.baseRadius + radiusModulation;
       
-      const x = this.centerX + radius * Math.cos(angle);
-      const y = this.centerY + radius * Math.sin(angle);
+      const x = this.centerX + radius * this.cosTable[i];
+      const y = this.centerY + radius * this.sinTable[i];
       
       if (i === 0) {
-        this.ctx.moveTo(x, y);
+        path.moveTo(x, y);
       } else {
-        this.ctx.lineTo(x, y);
+        path.lineTo(x, y);
       }
     }
     
-    this.ctx.closePath();
-    this.ctx.strokeStyle = color;
-    this.ctx.lineWidth = lineWidth;
-    this.ctx.stroke();
+    path.closePath();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = lineWidth;
+    ctx.stroke(path);
     
-    // Fill with opacity
-    const colorRGB = this.hexToRgb(color);
-    this.ctx.fillStyle = `rgba(${colorRGB.r}, ${colorRGB.g}, ${colorRGB.b}, ${opacity})`;
-    this.ctx.fill();
+    // Fill with opacity using cached RGB
+    ctx.fillStyle = `rgba(${cachedRGB.r}, ${cachedRGB.g}, ${cachedRGB.b}, ${opacity})`;
+    ctx.fill(path);
   }
   
   /**
@@ -424,8 +520,7 @@ class AudioVisualiser {
     const fadeAlpha = this.controls?.fade 
       ? parseFloat(this.controls.fade.value) 
       : this.settings.fade;
-    const bgColor = this.controls?.bgColor?.value || this.settings.bgColor;
-    const bgRGB = this.hexToRgb(bgColor);
+    const bgRGB = this._cachedRGB.bgColor;
     this.ctx.fillStyle = `rgba(${bgRGB.r}, ${bgRGB.g}, ${bgRGB.b}, ${fadeAlpha})`;
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
     
@@ -435,8 +530,8 @@ class AudioVisualiser {
     
     if (this.rotationStartTime !== null) {
       const elapsed = Date.now() - this.rotationStartTime;
-      rotationOffset = (elapsed / this.getRotationPeriod()) * 2 * Math.PI * this.sineFrequency;
-      rotationOffset2 = (elapsed / this.getRotationPeriod2()) * 2 * Math.PI * this.sineFrequency2;
+      rotationOffset = (elapsed / this.getRotationPeriod()) * AudioVisualiser.TWO_PI * this.sineFrequency;
+      rotationOffset2 = (elapsed / this.getRotationPeriod2()) * AudioVisualiser.TWO_PI * this.sineFrequency2;
     }
     
     // Get colors and opacities
@@ -450,10 +545,10 @@ class AudioVisualiser {
       : this.settings.opacity2;
     
     // Draw second circle first (behind)
-    this.drawModulatedCircle(rmsModulation2, this.sineFrequency2, rotationOffset2, color2, opacity2, 1.5);
+    this.drawModulatedCircle(rmsModulation2, this.sineFrequency2, rotationOffset2, color2, this._cachedRGB.color2, opacity2, 1.5);
     
     // Draw first circle on top
-    this.drawModulatedCircle(rmsModulation, this.sineFrequency, rotationOffset, color1, opacity1, 2);
+    this.drawModulatedCircle(rmsModulation, this.sineFrequency, rotationOffset, color1, this._cachedRGB.color1, opacity1, 2);
   }
   
   /**
@@ -469,40 +564,56 @@ class AudioVisualiser {
   }
   
   /**
-   * Start animation loop
+   * Animation frame callback
+   */
+  animate() {
+    this.currentRMS = this.calculateRMS();
+    this.currentRMS2 = this.calculateRMS2();
+    this.drawCircle(this.currentRMS, this.currentRMS2);
+    this.animationFrameId = requestAnimationFrame(this._boundAnimate);
+  }
+  
+  /**
+   * Start animation loop using requestAnimationFrame
    */
   startAnimation() {
-    if (this.animationInterval) {
-      clearInterval(this.animationInterval);
-    }
+    // Stop any existing animation first
+    this.stopAnimation();
     
     this.rotationStartTime = Date.now();
     
-    this.animationInterval = setInterval(() => {
-      this.currentRMS = this.calculateRMS();
-      this.currentRMS2 = this.calculateRMS2();
-      this.drawCircle(this.currentRMS, this.currentRMS2);
-    }, 62.5);  // 16 times per second
+    // Store bound reference for consistent cancel
+    this._boundAnimate = this.animate.bind(this);
+    this.animationFrameId = requestAnimationFrame(this._boundAnimate);
   }
   
   /**
    * Stop animation loop
    */
   stopAnimation() {
-    if (this.animationInterval) {
-      clearInterval(this.animationInterval);
-      this.animationInterval = null;
+    if (this.animationFrameId) {
+      cancelAnimationFrame(this.animationFrameId);
+      this.animationFrameId = null;
     }
     this.rotationStartTime = null;
     this.drawCircle(0, 0);
   }
   
   /**
-   * Clean up resources
+   * Clean up all resources
    */
   destroy() {
     this.stopAnimation();
     this.stopMicrophone();
+    
+    // Remove all tracked event listeners
+    this._removeAllListeners();
+    
+    // Revoke any outstanding object URL
+    if (this.currentObjectURL) {
+      URL.revokeObjectURL(this.currentObjectURL);
+      this.currentObjectURL = null;
+    }
     
     if (this.source) {
       this.source.disconnect();

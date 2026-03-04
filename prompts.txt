@@ -1,0 +1,99 @@
+1. create a new html file which draws a circle which is modulated by a sine wave of frequency 8Hz and amplitude 10. The circle should have radius of 20 pixels and be centred in a canvas square of 100 x 100 pixels. Call the new file circle.html
+
+2. change the sine wave to be offset by 10 so it modulates between 0 and 20.
+
+3. change the sine wave for a cosine wave
+
+4. the canvas has height = width = 100 but doesn't appear square, it is instead a rectangle. Why is this?
+
+5. Change the script to open the file test.wav, which is in the same directory as the html file, and play it. While it is playing draw the modulated circle as before but repeat drawing it 4 times per second and modulate the cosine wave by the root mean square amplitue of the audio from the previous 0.25s. Only start this after the first 0.25s of audio has been played.
+
+6. Add a play button to allow the user to start the audio and replay it
+
+7. the audio is not playing, or at least I can't hear it
+
+8. There is a CORS issue MediaElementAudioSource outputs zeroes due to CORS access restrictions for file:///C:/Users/ianmcguire/OneDrive%20-%20Microsoft/Projects/S-Curve/test.wav
+
+9. Instead of redrawing the circle 4 times per second change it to 16 times per second and change the RMS calculation to occur for the preceding 1/16th of a second
+
+10. Before playing the audio file read it all to determine the peak amplitude. Use this to determine the scaling to use on the cosine wave to ensure it never exceeds the enclosing canvas.
+
+11. The new update is generating the following error...
+
+Uncaught ReferenceError: Cannot access 'playButton' before initialization
+    at circle.html:168:7
+    at circle.html:294:7
+
+12. Don't clear the canvas at the end, instead show the value as if the RMS is 0.
+
+13. Start with the canvas showing the output for RMS of 0. This will be the initial state of the visualisation
+
+14. Change the play button to show a media player element instead
+
+15. Now change the file so that the user can select the audio file to play from a file on their machine. 
+
+16. I want the circle modulated by the cosine wave to rotate slowly, doing a full rotation every 30 seconds. Suggest ways to achieve this
+
+17. Procede with option 2. Make it clear in the code where the rotation speed is set to allow it to be modified in future
+
+18. The rotation seems too slow, it is rotating much slower than the 30s to do a full roatation
+
+19. Add an input element to allow the user to set the rotational speed for the visualisation. The user should enter the number of seconds to complete a full revolution.
+
+20. Let's add a second rotating circle. This second circle will be modulated by a cosine wave with frequency 4Hz, resulting in it having 4 petals. This 4 petal visualisation should then be modulated by the RMS value calculateed over the preeceding 0.5s. This should make it respond to the audio slightly slower than the first circle
+
+21. Change the second circle to have 6 petals instead of 4 and make it reflect the RMS value from the preeceding 0.25s instead of 0.5s.
+
+22. Let's make the rotational speed of the second circle different to thte first. Add another input element for the speed of the second circle
+
+23. alter the code to allow negative values for rotational speed as you suggested
+
+24. suggest ways I could achieve a ghost effect where the previous circles fade away rather than disappear immediately
+
+25. implement option 1
+
+26. add an input element to allow the user to modify the alpha value. Call it 'fade' and have a slider that allows a value from 0 to 1 to be used
+
+27. increase the size of drawing canvas to 300x300 and resize the circles accordingly
+
+28. Let's allow the user to select the colour of the circles. What recommendations do you suggest for input mechanisms to select colors
+
+29. Let's use option 1. Add two colour pickers one for each circle
+
+30. Let's remove the scaling based on the peak RMS, i.e. no longer need to read the file iitially to get the peak RMS.
+
+31. Now, let's look at the audio format and normalise the amplitude to be between -1 and +1 
+
+32. Make sure that a peak RMS amplitude will result in the visualisation not exceeding the bounding canvas, i.e. when the aplitude is at maximum then visualisation will still be completely visible within the canvas
+
+33. The visualisation is now not as dynamic as before, in that it doesn't change as much to the audio, could this be made more responsive by reducing the time windows over which I calculate the RMS values?
+
+34. what have you reduced the second circle sample window to?
+
+35. Can the calculations be altered such that if the audio was silence, amplitude 0, for more than the sample windows it would generate circles, i.e. no modulation
+
+36. Allow the user to specify the background colour for the drawing canvas. Add a colour selector, just as we've used for the circles, to let the canvas beackground be chosen.
+
+37. Change the canvas size to be 500x500 and scale the visualisation accordingly
+
+38. The fill transparency for each circle is currently hard coded as 0.05, is that correct
+
+39. Yes, make them adjustable with user controls as per the fade slider
+
+40. If I wanted to save the visualisation created so that it could be exported as a mp4 movie, suggest how I could achieve this
+
+41. Give the user the option of either loading an audio file or recording audio and the visualisation to run as the audio is being recorded. 
+
+42. When capturing the audio via the microphone it is also playing it back. Change it so it just captures the audio and doesn't play it back. There is no need for the audio to be kept
+
+43. Use the same button for starting and stopping audio capture from microphone. When the user clicks on it to start recording change the text to say "Stop Recording" and then revert back to "Start Recording" when they click it again. In this way the one button does the functionality of the two buttons previously
+
+44. Beneath the drawing canvas place a separator line followed by the heading "Audio Source", then before the first rotation speed input insert another separator line and the heading "Controls"
+
+45. if I load an audio file and play it, then click the start recording button, the audio player control disappears
+
+46. unfortunately, if I load an audio file and start playing it, then try switching to using the record button, and then back to the audio file it no longer plays
+
+47. this change hasn't fixed the problem
+
+48. The drawing of the two circles is done by almost identical code (lines 436 to 466 and lines 469 to 501). Create a function from this code using parameters that are passed in to draw the different circles. This should make the code easier to maintain and understand
